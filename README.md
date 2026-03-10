@@ -71,6 +71,16 @@ cargo run -- js "let a = 1 + 2 * 3; a;"
 cargo run -- window
 ```
 
+### 5) 使用 AI 总结网页
+```bash
+cargo run -- summarize http://example.com
+```
+
+### 6) 基于网页上下文问答
+```bash
+cargo run -- ask http://example.com "这个页面讲了什么？"
+```
+
 ## AI 能力配置
 
 设置以下环境变量后可接入兼容 Chat Completions 的模型服务：

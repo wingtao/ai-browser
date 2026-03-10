@@ -6,6 +6,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::Context;
 
+use crate::app::ai::{
+    client::AiClient, page_context::PageContext, page_qa::ask_page, summarizer::summarize_page,
+};
 use crate::engine::{
     dom::parser::parse_html, js::vm::Interpreter, net::http_client::HttpClient,
     webapi::script_runner::run_inline_scripts,
@@ -40,6 +43,39 @@ pub fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Some("window") => run_window(),
+        Some("summarize") => {
+            let url = args
+                .get(2)
+                .context("用法: cargo run -- summarize <url>")?
+                .to_string();
+            let html = HttpClient::default().get_text(&url)?;
+            let doc = Rc::new(RefCell::new(parse_html(&html)?));
+            run_inline_scripts(Rc::clone(&doc))?;
+            let context = PageContext::from_document(url, &doc.borrow());
+            let client = AiClient::from_env()?;
+            let summary = summarize_page(&client, &context)?;
+            println!("{summary}");
+            Ok(())
+        }
+        Some("ask") => {
+            let url = args
+                .get(2)
+                .context("用法: cargo run -- ask <url> <问题>")?
+                .to_string();
+            let question = args
+                .get(3..)
+                .map(|parts| parts.join(" "))
+                .filter(|s| !s.trim().is_empty())
+                .context("用法: cargo run -- ask <url> <问题>")?;
+            let html = HttpClient::default().get_text(&url)?;
+            let doc = Rc::new(RefCell::new(parse_html(&html)?));
+            run_inline_scripts(Rc::clone(&doc))?;
+            let context = PageContext::from_document(url, &doc.borrow());
+            let client = AiClient::from_env()?;
+            let answer = ask_page(&client, &context, &question)?;
+            println!("{answer}");
+            Ok(())
+        }
         _ => {
             print_usage();
             Ok(())
@@ -52,6 +88,8 @@ fn print_usage() {
     println!("usage:");
     println!("  cargo run -- load <url>      # 拉取网页、执行内联脚本并输出文本预览");
     println!("  cargo run -- js <script>     # 运行自研 JS 引擎脚本");
+    println!("  cargo run -- summarize <url> # 使用 AI 总结网页");
+    println!("  cargo run -- ask <url> <问题> # 基于网页上下文进行问答");
     println!("  cargo run -- window          # 打开最小窗口事件循环");
 }
 
