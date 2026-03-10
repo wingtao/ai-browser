@@ -12,6 +12,7 @@ use super::{
         value::{FunctionValue, Value},
     },
 };
+use crate::engine::webapi::{console::format_console_args, dom_bindings::JsDocumentBinding};
 
 #[derive(Debug)]
 enum Flow {
@@ -28,30 +29,57 @@ pub struct Interpreter {
 impl Default for Interpreter {
     fn default() -> Self {
         let global = Environment::new(None);
-        Environment::define(
-            &global,
-            "print",
-            Value::NativeFunction {
-                name: "print",
-                func: |args| {
-                    let out = args
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    println!("{out}");
-                    Ok(Value::Undefined)
-                },
-            },
-        );
-        Self {
+        let mut vm = Self {
             global,
             gc: GcRuntime::default(),
-        }
+        };
+        vm.define_native_function("print", |args| {
+            println!("{}", format_console_args(&args));
+            Ok(Value::Undefined)
+        });
+        vm
     }
 }
 
 impl Interpreter {
+    pub fn define_native_function<F>(&mut self, name: &str, func: F)
+    where
+        F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
+    {
+        Environment::define(
+            &self.global,
+            name.to_string(),
+            Value::NativeFunction {
+                name: name.to_string(),
+                func: Rc::new(func),
+            },
+        );
+    }
+
+    pub fn install_dom_apis(&mut self, binding: JsDocumentBinding) {
+        let read_binding = binding.clone();
+        self.define_native_function("dom_get_text", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            Ok(read_binding
+                .query_selector_text(&selector)
+                .map(Value::String)
+                .unwrap_or(Value::Undefined))
+        });
+
+        self.define_native_function("dom_set_text", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            let text = args.get(1).map(ToString::to_string).unwrap_or_default();
+            let changed = binding.set_first_text_for_tag(&selector, &text);
+            Ok(Value::Bool(changed))
+        });
+    }
+
     pub fn eval(&mut self, code: &str) -> anyhow::Result<Value> {
         let program = parse_program(code)?;
         self.eval_program(&program, Rc::clone(&self.global))
@@ -228,7 +256,7 @@ impl Interpreter {
                 }
                 Ok(ret)
             }
-            Value::NativeFunction { func, .. } => func(args).map_err(|e| anyhow!(e)),
+            Value::NativeFunction { func, .. } => (func)(args).map_err(|e| anyhow!(e)),
             _ => Err(anyhow!("调用目标不可执行")),
         }
     }
@@ -270,7 +298,10 @@ fn eval_binary(op: BinaryOp, left: Value, right: Value) -> anyhow::Result<Value>
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc};
+
     use super::*;
+    use crate::engine::{dom::parser::parse_html, webapi::dom_bindings::JsDocumentBinding};
 
     #[test]
     fn eval_basic_arithmetic() {
@@ -314,5 +345,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(out, Value::Number(3.0));
+    }
+
+    #[test]
+    fn eval_dom_bridge_functions() {
+        let doc = parse_html("<html><body><h1>Hello</h1></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        let mut vm = Interpreter::default();
+        vm.install_dom_apis(binding);
+        let out = vm
+            .eval(r#"dom_set_text("h1", "World"); dom_get_text("h1");"#)
+            .unwrap();
+        assert_eq!(out, Value::String("World".to_string()));
     }
 }

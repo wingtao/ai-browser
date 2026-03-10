@@ -4,7 +4,7 @@ use crate::engine::js::ast::Stmt;
 
 use super::{object::ObjectRef, scope::EnvRef};
 
-pub type NativeFn = fn(Vec<Value>) -> Result<Value, String>;
+pub type NativeFn = Rc<dyn Fn(Vec<Value>) -> Result<Value, String>>;
 
 #[derive(Clone, Debug)]
 pub struct FunctionValue {
@@ -14,7 +14,7 @@ pub struct FunctionValue {
     pub closure: EnvRef,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Value {
     Number(f64),
     String(String),
@@ -23,7 +23,7 @@ pub enum Value {
     Undefined,
     Object(ObjectRef),
     Function(Rc<FunctionValue>),
-    NativeFunction { name: &'static str, func: NativeFn },
+    NativeFunction { name: String, func: NativeFn },
 }
 
 impl Value {
@@ -48,6 +48,25 @@ impl PartialEq for Value {
             (Null, Null) => true,
             (Undefined, Undefined) => true,
             _ => false,
+        }
+    }
+}
+
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "Number({n})"),
+            Value::String(s) => write!(f, "String({s})"),
+            Value::Bool(b) => write!(f, "Bool({b})"),
+            Value::Null => write!(f, "Null"),
+            Value::Undefined => write!(f, "Undefined"),
+            Value::Object(_) => write!(f, "Object(..)"),
+            Value::Function(func) => write!(
+                f,
+                "Function({})",
+                func.name.as_deref().unwrap_or("anonymous")
+            ),
+            Value::NativeFunction { name, .. } => write!(f, "NativeFunction({name})"),
         }
     }
 }

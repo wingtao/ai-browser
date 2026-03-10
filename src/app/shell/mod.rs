@@ -1,3 +1,7 @@
+pub mod address_bar;
+pub mod navigation;
+pub mod tab_manager;
+
 use anyhow::Context;
 
 use crate::engine::{dom::parser::parse_html, js::vm::Interpreter, net::http_client::HttpClient};

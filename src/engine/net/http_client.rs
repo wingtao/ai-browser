@@ -9,10 +9,14 @@ pub struct HttpClient {
 
 impl Default for HttpClient {
     fn default() -> Self {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("ai-browser/0.1")
-            .build()
-            .expect("http client should build");
+        let mut builder = reqwest::blocking::Client::builder().user_agent("ai-browser/0.1");
+        if std::env::var("AI_BROWSER_INSECURE_TLS")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+        let client = builder.build().expect("http client should build");
         Self { client }
     }
 }
