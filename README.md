@@ -66,6 +66,11 @@ cargo run -- load https://example.com
 cargo run -- js "let a = 1 + 2 * 3; a;"
 ```
 
+JS 运行时额外支持（简化）：
+- `setTimeout(fn, delay)` / `clearTimeout(id)` / `runTasks()`
+- `addEventListener` / `dispatchEvent`（全局事件）
+- 在 DOM 上下文中：`dom_add_event_listener` / `dom_dispatch_event`（简化冒泡）
+
 ### 4) 启动最小窗口循环
 ```bash
 cargo run -- window

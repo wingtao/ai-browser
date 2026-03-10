@@ -41,6 +41,10 @@
 - 支持原生函数注册：`define_native_function`。
 - 支持构造调用：`new Fn(...)`，并创建实例对象原型链（基础）。
 - 内置 `print`，并支持安装 DOM 桥接 API。
+- 内建简化异步与事件 API：
+  - `setTimeout(fn, delay)` / `clearTimeout(id)` / `runTasks()`
+  - `addEventListener(event, cb)` / `dispatchEvent(event)`
+  - `dom_add_event_listener(tag,event,cb)` / `dom_dispatch_event(tag,event)`（含简化冒泡）
 
 ## 已有验证用例
 
@@ -50,6 +54,8 @@
 - try/catch/finally 与 throw
 - new + this 构造实例
 - DOM 桥接调用（`dom_set_text` / `dom_get_text` / `dom_get_all_text`）
+- setTimeout + runTasks
+- DOM 事件冒泡（button -> body -> html -> document）
 
 ## 后续扩展
 

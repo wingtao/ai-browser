@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::engine::dom::node::{Document, Node, NodeType};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct JsDocumentBinding {
     doc: Rc<RefCell<Document>>,
 }
@@ -39,6 +39,24 @@ impl JsDocumentBinding {
             find_all_text_by_tag(node, selector, &mut result);
         }
         result
+    }
+
+    pub fn ancestor_chain_for_tag(&self, selector: &str) -> Vec<String> {
+        let doc = self.doc.borrow();
+        let mut path = Vec::new();
+        for node in &doc.children {
+            let mut current = Vec::new();
+            if find_path_to_tag(node, selector, &mut current) {
+                path = current;
+                break;
+            }
+        }
+        if path.is_empty() {
+            return vec![selector.to_string(), "document".to_string()];
+        }
+        path.reverse();
+        path.push("document".to_string());
+        path
     }
 }
 
@@ -99,6 +117,29 @@ fn find_all_text_by_tag(node: &Node, selector: &str, out: &mut Vec<String>) {
     }
 }
 
+fn find_path_to_tag(node: &Node, selector: &str, out: &mut Vec<String>) -> bool {
+    if let NodeType::Element(tag) = &node.node_type {
+        out.push(tag.to_lowercase());
+        if tag.eq_ignore_ascii_case(selector) {
+            return true;
+        }
+        for child in &node.children {
+            if find_path_to_tag(child, selector, out) {
+                return true;
+            }
+        }
+        out.pop();
+        false
+    } else {
+        for child in &node.children {
+            if find_path_to_tag(child, selector, out) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,5 +164,22 @@ mod tests {
         let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
         let all = binding.query_selector_all_text("p");
         assert_eq!(all, vec!["A".to_string(), "B".to_string(), "C".to_string()]);
+    }
+
+    #[test]
+    fn build_ancestor_chain() {
+        let doc = parse_html("<html><body><div><button>Go</button></div></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        let chain = binding.ancestor_chain_for_tag("button");
+        assert_eq!(
+            chain,
+            vec![
+                "button".to_string(),
+                "div".to_string(),
+                "body".to_string(),
+                "html".to_string(),
+                "document".to_string()
+            ]
+        );
     }
 }

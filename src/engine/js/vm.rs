@@ -1,6 +1,9 @@
-use std::rc::Rc;
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 
 use super::{
     ast::{AssignTarget, BinaryOp, Expr, ForInit, Program, Stmt, UnaryOp},
@@ -26,6 +29,11 @@ enum Flow {
 pub struct Interpreter {
     global: EnvRef,
     gc: GcRuntime,
+    dom_binding: Option<JsDocumentBinding>,
+    event_listeners: HashMap<String, Vec<Value>>,
+    next_timer_id: u64,
+    pending_timers: Vec<(u64, Value)>,
+    cancelled_timers: HashSet<u64>,
 }
 
 impl Default for Interpreter {
@@ -34,6 +42,11 @@ impl Default for Interpreter {
         let mut vm = Self {
             global,
             gc: GcRuntime::default(),
+            dom_binding: None,
+            event_listeners: HashMap::new(),
+            next_timer_id: 0,
+            pending_timers: Vec::new(),
+            cancelled_timers: HashSet::new(),
         };
         vm.define_native_function("print", |args| {
             println!("{}", format_console_args(&args));
@@ -59,6 +72,7 @@ impl Interpreter {
     }
 
     pub fn install_dom_apis(&mut self, binding: JsDocumentBinding) {
+        self.dom_binding = Some(binding.clone());
         let read_binding = binding.clone();
         self.define_native_function("dom_get_text", move |args| {
             let selector = args
@@ -329,6 +343,11 @@ impl Interpreter {
                 }
             }
             Expr::Call { callee, args } => {
+                if let Expr::Identifier(name) = callee.as_ref() {
+                    if let Some(result) = self.try_eval_builtin_call(name, args, Rc::clone(&env))? {
+                        return Ok(result);
+                    }
+                }
                 let callee_value = self.eval_expr(callee, Rc::clone(&env))?;
                 let mut arg_values = Vec::with_capacity(args.len());
                 for arg in args {
@@ -345,6 +364,152 @@ impl Interpreter {
                 self.construct(callee_value, arg_values)
             }
         }
+    }
+
+    fn try_eval_builtin_call(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        env: EnvRef,
+    ) -> anyhow::Result<Option<Value>> {
+        match name {
+            "setTimeout" => {
+                if args.is_empty() {
+                    return Err(anyhow!("setTimeout 至少需要回调参数"));
+                }
+                let callback = self.eval_expr(&args[0], Rc::clone(&env))?;
+                if !matches!(callback, Value::Function(_) | Value::NativeFunction { .. }) {
+                    return Err(anyhow!("setTimeout 第一个参数必须是函数"));
+                }
+                self.next_timer_id += 1;
+                let id = self.next_timer_id;
+                self.pending_timers.push((id, callback));
+                Ok(Some(Value::Number(id as f64)))
+            }
+            "clearTimeout" => {
+                let timer_id = if let Some(expr) = args.first() {
+                    match self.eval_expr(expr, Rc::clone(&env))? {
+                        Value::Number(n) => n as u64,
+                        other => {
+                            return Err(anyhow!("clearTimeout 参数必须是 number, got {}", other))
+                        }
+                    }
+                } else {
+                    0
+                };
+                self.cancelled_timers.insert(timer_id);
+                Ok(Some(Value::Undefined))
+            }
+            "runTasks" => {
+                self.run_pending_tasks()?;
+                Ok(Some(Value::Undefined))
+            }
+            "addEventListener" => {
+                let event = self.eval_expr(
+                    args.first()
+                        .context("addEventListener(event, callback) 缺少 event 参数")?,
+                    Rc::clone(&env),
+                )?;
+                let callback = self.eval_expr(
+                    args.get(1)
+                        .context("addEventListener(event, callback) 缺少 callback 参数")?,
+                    Rc::clone(&env),
+                )?;
+                let event = value_to_plain_string(&event);
+                if !matches!(callback, Value::Function(_) | Value::NativeFunction { .. }) {
+                    return Err(anyhow!("addEventListener callback 必须是函数"));
+                }
+                self.event_listeners
+                    .entry(format!("global::{event}"))
+                    .or_default()
+                    .push(callback);
+                Ok(Some(Value::Undefined))
+            }
+            "dispatchEvent" => {
+                let event = self.eval_expr(
+                    args.first()
+                        .context("dispatchEvent(event) 缺少 event 参数")?,
+                    Rc::clone(&env),
+                )?;
+                let event = value_to_plain_string(&event);
+                self.dispatch_event_keys(vec![format!("global::{event}")])?;
+                Ok(Some(Value::Undefined))
+            }
+            "dom_add_event_listener" => {
+                let target = self.eval_expr(
+                    args.first()
+                        .context("dom_add_event_listener(target,event,callback) 缺少 target")?,
+                    Rc::clone(&env),
+                )?;
+                let event = self.eval_expr(
+                    args.get(1)
+                        .context("dom_add_event_listener(target,event,callback) 缺少 event")?,
+                    Rc::clone(&env),
+                )?;
+                let callback = self.eval_expr(
+                    args.get(2)
+                        .context("dom_add_event_listener(target,event,callback) 缺少 callback")?,
+                    Rc::clone(&env),
+                )?;
+                if !matches!(callback, Value::Function(_) | Value::NativeFunction { .. }) {
+                    return Err(anyhow!("dom_add_event_listener callback 必须是函数"));
+                }
+                let target = value_to_plain_string(&target).to_lowercase();
+                let event = value_to_plain_string(&event);
+                self.event_listeners
+                    .entry(format!("dom::{event}::{target}"))
+                    .or_default()
+                    .push(callback);
+                Ok(Some(Value::Undefined))
+            }
+            "dom_dispatch_event" => {
+                let target = self.eval_expr(
+                    args.first()
+                        .context("dom_dispatch_event(target,event) 缺少 target")?,
+                    Rc::clone(&env),
+                )?;
+                let event = self.eval_expr(
+                    args.get(1)
+                        .context("dom_dispatch_event(target,event) 缺少 event")?,
+                    Rc::clone(&env),
+                )?;
+                let target = value_to_plain_string(&target).to_lowercase();
+                let event = value_to_plain_string(&event);
+                let chain = if let Some(binding) = &self.dom_binding {
+                    binding.ancestor_chain_for_tag(&target)
+                } else {
+                    vec![target, "document".to_string()]
+                };
+                let keys = chain
+                    .into_iter()
+                    .map(|node| format!("dom::{event}::{node}"))
+                    .collect::<Vec<_>>();
+                self.dispatch_event_keys(keys)?;
+                Ok(Some(Value::Undefined))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn dispatch_event_keys(&mut self, keys: Vec<String>) -> anyhow::Result<()> {
+        for key in keys {
+            let listeners = self.event_listeners.get(&key).cloned().unwrap_or_default();
+            for callback in listeners {
+                let _ = self.call(callback, vec![])?;
+            }
+        }
+        Ok(())
+    }
+
+    fn run_pending_tasks(&mut self) -> anyhow::Result<()> {
+        let pending = std::mem::take(&mut self.pending_timers);
+        for (id, callback) in pending {
+            if self.cancelled_timers.contains(&id) {
+                continue;
+            }
+            let _ = self.call(callback, vec![])?;
+        }
+        Ok(())
     }
 
     fn eval_for_init(&mut self, init: &ForInit, env: EnvRef) -> anyhow::Result<()> {
@@ -426,6 +591,13 @@ fn to_number(v: &Value) -> f64 {
         Value::Null => 0.0,
         Value::Undefined => f64::NAN,
         Value::Object(_) | Value::Function(_) | Value::NativeFunction { .. } => f64::NAN,
+    }
+}
+
+fn value_to_plain_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
     }
 }
 
@@ -597,5 +769,44 @@ mod tests {
         let mut vm = Interpreter::default();
         let err = vm.eval(r#"throw "oops";"#).unwrap_err();
         assert!(err.to_string().contains("throw: oops"));
+    }
+
+    #[test]
+    fn eval_set_timeout_and_run_tasks() {
+        let mut vm = Interpreter::default();
+        let out = vm
+            .eval(
+                r#"
+                let x = 0;
+                function tick() { x = 7; }
+                setTimeout(tick, 0);
+                runTasks();
+                x;
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, Value::Number(7.0));
+    }
+
+    #[test]
+    fn eval_dom_event_bubbling() {
+        let doc = parse_html("<html><body><div><button>Go</button></div></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        let mut vm = Interpreter::default();
+        vm.install_dom_apis(binding);
+        let out = vm
+            .eval(
+                r#"
+                let c = 0;
+                function onBtn(){ c = c + 1; }
+                function onBody(){ c = c + 10; }
+                dom_add_event_listener("button", "click", onBtn);
+                dom_add_event_listener("body", "click", onBody);
+                dom_dispatch_event("button", "click");
+                c;
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, Value::Number(11.0));
     }
 }
