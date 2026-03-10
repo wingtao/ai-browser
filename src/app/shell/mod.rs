@@ -54,6 +54,23 @@ pub fn run() -> anyhow::Result<()> {
             println!("result: {result}");
             Ok(())
         }
+        Some("js-dom") => {
+            let html = args
+                .get(2)
+                .context("用法: cargo run -- js-dom \"<html>...</html>\" \"script\"")?;
+            let script = args
+                .get(3)
+                .context("用法: cargo run -- js-dom \"<html>...</html>\" \"script\"")?;
+            let doc = parse_html(html)?;
+            let doc = Rc::new(RefCell::new(doc));
+            let binding =
+                crate::engine::webapi::dom_bindings::JsDocumentBinding::new(Rc::clone(&doc));
+            let mut interpreter = Interpreter::default();
+            interpreter.install_dom_apis(binding);
+            let result = interpreter.eval(script)?;
+            println!("result: {result}");
+            Ok(())
+        }
         Some("window") => run_window(args.get(2).cloned()),
         Some("history-add") => {
             let url = args
@@ -168,6 +185,7 @@ fn print_usage() {
     println!("  cargo run -- load <url>      # 拉取网页、执行内联脚本并输出文本预览");
     println!("  cargo run -- js <script>     # 运行自研 JS 引擎脚本");
     println!("  cargo run -- js-bc <script>  # 运行字节码解释路径（子集）");
+    println!("  cargo run -- js-dom <html> <script> # 在DOM上下文运行JS");
     println!("  cargo run -- history-add <url> <title>");
     println!("  cargo run -- history-list [limit]");
     println!("  cargo run -- history-clear");

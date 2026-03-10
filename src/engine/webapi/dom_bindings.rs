@@ -58,6 +58,45 @@ impl JsDocumentBinding {
         path.push("document".to_string());
         path
     }
+
+    pub fn append_child_text_to_first_tag(
+        &self,
+        parent_selector: &str,
+        child_tag: &str,
+        text: &str,
+    ) -> bool {
+        let mut doc = self.doc.borrow_mut();
+        for node in &mut doc.children {
+            if append_child_to_first_tag(node, parent_selector, child_tag, text) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn remove_first_child_tag_from_first_tag(
+        &self,
+        parent_selector: &str,
+        child_selector: &str,
+    ) -> bool {
+        let mut doc = self.doc.borrow_mut();
+        for node in &mut doc.children {
+            if remove_first_child_from_first_tag(node, parent_selector, child_selector) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn inner_html_for_first_tag(&self, selector: &str) -> Option<String> {
+        let doc = self.doc.borrow();
+        for node in &doc.children {
+            if let Some(html) = inner_html_for_first_tag(node, selector) {
+                return Some(html);
+            }
+        }
+        None
+    }
 }
 
 fn find_text_by_tag(node: &Node, selector: &str) -> Option<String> {
@@ -140,6 +179,92 @@ fn find_path_to_tag(node: &Node, selector: &str, out: &mut Vec<String>) -> bool 
     }
 }
 
+fn append_child_to_first_tag(
+    node: &mut Node,
+    parent_selector: &str,
+    child_tag: &str,
+    text: &str,
+) -> bool {
+    if let NodeType::Element(tag) = &node.node_type {
+        if tag.eq_ignore_ascii_case(parent_selector) {
+            node.children
+                .push(Node::element(child_tag, vec![Node::text(text.to_string())]));
+            return true;
+        }
+    }
+    for child in &mut node.children {
+        if append_child_to_first_tag(child, parent_selector, child_tag, text) {
+            return true;
+        }
+    }
+    false
+}
+
+fn remove_first_child_from_first_tag(
+    node: &mut Node,
+    parent_selector: &str,
+    child_selector: &str,
+) -> bool {
+    if let NodeType::Element(tag) = &node.node_type {
+        if tag.eq_ignore_ascii_case(parent_selector) {
+            if let Some(idx) = node.children.iter().position(|child| {
+                matches!(&child.node_type, NodeType::Element(t) if t.eq_ignore_ascii_case(child_selector))
+            }) {
+                node.children.remove(idx);
+                return true;
+            }
+            return false;
+        }
+    }
+    for child in &mut node.children {
+        if remove_first_child_from_first_tag(child, parent_selector, child_selector) {
+            return true;
+        }
+    }
+    false
+}
+
+fn inner_html_for_first_tag(node: &Node, selector: &str) -> Option<String> {
+    if let NodeType::Element(tag) = &node.node_type {
+        if tag.eq_ignore_ascii_case(selector) {
+            let html = node
+                .children
+                .iter()
+                .map(node_to_html)
+                .collect::<Vec<_>>()
+                .join("");
+            return Some(html);
+        }
+    }
+    for child in &node.children {
+        if let Some(v) = inner_html_for_first_tag(child, selector) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn node_to_html(node: &Node) -> String {
+    match &node.node_type {
+        NodeType::Text(text) => text.clone(),
+        NodeType::Element(tag) => {
+            let children = node
+                .children
+                .iter()
+                .map(node_to_html)
+                .collect::<Vec<_>>()
+                .join("");
+            format!("<{tag}>{children}</{tag}>")
+        }
+        NodeType::Document => node
+            .children
+            .iter()
+            .map(node_to_html)
+            .collect::<Vec<_>>()
+            .join(""),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +306,18 @@ mod tests {
                 "document".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn append_remove_and_inner_html() {
+        let doc = parse_html("<html><body><div><p>A</p></div></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        assert!(binding.append_child_text_to_first_tag("div", "span", "B"));
+        let html = binding.inner_html_for_first_tag("div").unwrap();
+        assert!(html.contains("<p>A</p>"));
+        assert!(html.contains("<span>B</span>"));
+        assert!(binding.remove_first_child_tag_from_first_tag("div", "p"));
+        let html = binding.inner_html_for_first_tag("div").unwrap();
+        assert!(!html.contains("<p>A</p>"));
     }
 }

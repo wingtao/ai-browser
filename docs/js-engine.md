@@ -45,6 +45,17 @@
   - `setTimeout(fn, delay)` / `clearTimeout(id)` / `runTasks()`
   - `addEventListener(event, cb)` / `dispatchEvent(event)`
   - `dom_add_event_listener(tag,event,cb)` / `dom_dispatch_event(tag,event)`（含简化冒泡）
+ - DOM 操作 API（简化）：
+   - `querySelector` / `querySelectorAll`
+   - `textContent` / `setTextContent`
+   - `innerHTML`
+   - `createElement` / `appendChild` / `removeChild`
+
+## 5. Bytecode 路径（实验性）
+- `engine/js/bytecode.rs`
+- 已支持：表达式、赋值、变量加载/存储的栈机执行
+- CLI 入口：`cargo run -- js-bc "<script>"`
+- 当前限制：控制流跳转与复杂语句仍由 AST 解释器承担
 
 ## 已有验证用例
 
@@ -54,12 +65,12 @@
 - try/catch/finally 与 throw
 - new + this 构造实例
 - DOM 桥接调用（`dom_set_text` / `dom_get_text` / `dom_get_all_text`）
+- DOM API 调用（`querySelector` / `createElement` / `appendChild` / `innerHTML`）
 - setTimeout + runTasks
 - DOM 事件冒泡（button -> body -> html -> document）
 
 ## 后续扩展
 
-- bytecode 编译与 VM 执行
 - mark-sweep GC 完整实现
 - 完整 this 绑定规则（方法调用、call/apply/bind）
 - 更完整 prototype 重写语义与继承链行为

@@ -85,6 +85,18 @@ impl Interpreter {
                 .unwrap_or(Value::Undefined))
         });
 
+        let qs_binding = binding.clone();
+        self.define_native_function("querySelector", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            Ok(qs_binding
+                .query_selector_text(&selector)
+                .map(Value::String)
+                .unwrap_or(Value::Undefined))
+        });
+
         let read_all_binding = binding.clone();
         self.define_native_function("dom_get_all_text", move |args| {
             let selector = args
@@ -93,6 +105,101 @@ impl Interpreter {
                 .unwrap_or_else(|| "body".to_string());
             let all = read_all_binding.query_selector_all_text(&selector);
             Ok(Value::String(all.join("\n")))
+        });
+
+        let qsa_binding = binding.clone();
+        self.define_native_function("querySelectorAll", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            let all = qsa_binding.query_selector_all_text(&selector);
+            Ok(Value::String(all.join("\n")))
+        });
+
+        let text_binding = binding.clone();
+        self.define_native_function("textContent", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            Ok(text_binding
+                .query_selector_text(&selector)
+                .map(Value::String)
+                .unwrap_or(Value::Undefined))
+        });
+
+        let set_text_binding = binding.clone();
+        self.define_native_function("setTextContent", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            let text = args.get(1).map(ToString::to_string).unwrap_or_default();
+            Ok(Value::Bool(
+                set_text_binding.set_first_text_for_tag(&selector, &text),
+            ))
+        });
+
+        let html_binding = binding.clone();
+        self.define_native_function("innerHTML", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            Ok(html_binding
+                .inner_html_for_first_tag(&selector)
+                .map(Value::String)
+                .unwrap_or(Value::Undefined))
+        });
+
+        self.define_native_function("createElement", move |args| {
+            let tag = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "div".to_string());
+            let text = args.get(1).map(ToString::to_string).unwrap_or_default();
+            let obj = Object::new();
+            Object::set(&obj, "__tag", Value::String(tag));
+            Object::set(&obj, "__text", Value::String(text));
+            Ok(Value::Object(obj))
+        });
+
+        let append_binding = binding.clone();
+        self.define_native_function("appendChild", move |args| {
+            let parent = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            let Some(Value::Object(element)) = args.get(1).cloned() else {
+                return Ok(Value::Bool(false));
+            };
+            let tag = match Object::get(&element, "__tag") {
+                Value::String(s) if !s.trim().is_empty() => s,
+                _ => "div".to_string(),
+            };
+            let text = match Object::get(&element, "__text") {
+                Value::String(s) => s,
+                _ => String::new(),
+            };
+            Ok(Value::Bool(
+                append_binding.append_child_text_to_first_tag(&parent, &tag, &text),
+            ))
+        });
+
+        let remove_binding = binding.clone();
+        self.define_native_function("removeChild", move |args| {
+            let parent = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            let child = args
+                .get(1)
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "div".to_string());
+            Ok(Value::Bool(
+                remove_binding.remove_first_child_tag_from_first_tag(&parent, &child),
+            ))
         });
 
         self.define_native_function("dom_set_text", move |args| {
@@ -808,5 +915,27 @@ mod tests {
             )
             .unwrap();
         assert_eq!(out, Value::Number(11.0));
+    }
+
+    #[test]
+    fn eval_query_selector_and_dom_mutation_builtins() {
+        let doc = parse_html("<html><body><div><p>A</p></div></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        let mut vm = Interpreter::default();
+        vm.install_dom_apis(binding);
+        let out = vm
+            .eval(
+                r#"
+                let text = querySelector("p");
+                let el = createElement("span", "B");
+                appendChild("div", el);
+                let html = innerHTML("div");
+                removeChild("div", "p");
+                html;
+            "#,
+            )
+            .unwrap();
+        assert!(out.to_string().contains("<p>A</p>"));
+        assert!(out.to_string().contains("<span>B</span>"));
     }
 }

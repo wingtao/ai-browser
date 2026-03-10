@@ -21,7 +21,12 @@
 
 ### WebAPI（简化）
 - 事件循环（microtask/macrotask 简化模型）
-- DOM 绑定：`dom_get_text` / `dom_get_all_text` / `dom_set_text`（桥接 JS 与 DOM）
+- DOM 绑定：
+  - `querySelector` / `querySelectorAll`
+  - `textContent` / `setTextContent`
+  - `innerHTML`
+  - `createElement` / `appendChild` / `removeChild`
+  - 兼容别名：`dom_get_text` / `dom_get_all_text` / `dom_set_text`
 - 定时器：可取消 `setTimeout/clearTimeout` 基础调度模型
 - console 参数格式化支持
 
@@ -64,6 +69,16 @@ cargo run -- load https://example.com
 ### 3) 运行 JS 脚本
 ```bash
 cargo run -- js "let a = 1 + 2 * 3; a;"
+```
+
+### 3.1) 运行 JS 字节码路径（实验性子集）
+```bash
+cargo run -- js-bc "let a = 1 + 2 * 3; a;"
+```
+
+### 3.2) 在 DOM 上下文运行 JS
+```bash
+cargo run -- js-dom "<html><body><div><p>A</p></div></body></html>" "let el=createElement('span','B'); appendChild('div',el); innerHTML('div');"
 ```
 
 JS 运行时额外支持（简化）：
@@ -128,7 +143,7 @@ export AI_BROWSER_INSECURE_TLS=1
 
 ## 后续路线
 
-- 完善 DOM API（createElement、appendChild、事件冒泡细节）
+- 完善 DOM API（更完整选择器、节点引用与属性系统）
 - 增加多标签导航壳与持久化数据层（历史/书签）
 - 引入更完整的 CSS 布局模型和绘制管线
 
