@@ -117,3 +117,9 @@ export AI_BROWSER_INSECURE_TLS=1
 - 完善 DOM API（createElement、appendChild、事件冒泡细节）
 - 增加多标签导航壳与持久化数据层（历史/书签）
 - 引入更完整的 CSS 布局模型和绘制管线
+
+## 设计文档
+
+- `docs/architecture.md`
+- `docs/js-engine.md`
+- `docs/compatibility.md`
