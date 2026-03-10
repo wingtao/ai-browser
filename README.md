@@ -71,6 +71,16 @@ cargo run -- js "let a = 1 + 2 * 3; a;"
 cargo run -- window
 ```
 
+窗口模式快捷键：
+- `N` 新建标签页（about:blank）
+- `O` 打开示例页（http://example.com）
+- `R` 刷新
+- `B` 后退
+- `F` 前进
+- `W` 关闭当前标签
+- `1-9` 切换标签
+- `Q` 退出
+
 ### 5) 使用 AI 总结网页
 ```bash
 cargo run -- summarize http://example.com

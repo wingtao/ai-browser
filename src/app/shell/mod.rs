@@ -1,6 +1,7 @@
 pub mod address_bar;
 pub mod navigation;
 pub mod tab_manager;
+pub mod window_browser;
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -42,7 +43,7 @@ pub fn run() -> anyhow::Result<()> {
             println!("result: {result}");
             Ok(())
         }
-        Some("window") => run_window(),
+        Some("window") => run_window(args.get(2).cloned()),
         Some("summarize") => {
             let url = args
                 .get(2)
@@ -90,44 +91,9 @@ fn print_usage() {
     println!("  cargo run -- js <script>     # 运行自研 JS 引擎脚本");
     println!("  cargo run -- summarize <url> # 使用 AI 总结网页");
     println!("  cargo run -- ask <url> <问题> # 基于网页上下文进行问答");
-    println!("  cargo run -- window          # 打开最小窗口事件循环");
+    println!("  cargo run -- window [url]    # 打开窗口壳并加载URL");
 }
 
-fn run_window() -> anyhow::Result<()> {
-    use winit::{
-        application::ApplicationHandler,
-        event::WindowEvent,
-        event_loop::{ActiveEventLoop, EventLoop},
-        window::{Window, WindowAttributes, WindowId},
-    };
-
-    #[derive(Default)]
-    struct App {
-        window: Option<Window>,
-    }
-
-    impl ApplicationHandler for App {
-        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-            let attrs = WindowAttributes::default().with_title("ai-browser kernel shell");
-            if let Ok(window) = event_loop.create_window(attrs) {
-                self.window = Some(window);
-            }
-        }
-
-        fn window_event(
-            &mut self,
-            event_loop: &ActiveEventLoop,
-            _window_id: WindowId,
-            event: WindowEvent,
-        ) {
-            if let WindowEvent::CloseRequested = event {
-                event_loop.exit();
-            }
-        }
-    }
-
-    let event_loop = EventLoop::new()?;
-    let mut app = App::default();
-    event_loop.run_app(&mut app)?;
-    Ok(())
+fn run_window(start_url: Option<String>) -> anyhow::Result<()> {
+    window_browser::run_window(start_url)
 }
