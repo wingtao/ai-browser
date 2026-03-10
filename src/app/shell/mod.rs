@@ -11,7 +11,9 @@ use crate::app::ai::{
     client::AiClient, page_context::PageContext, page_qa::ask_page, summarizer::summarize_page,
 };
 use crate::engine::{
-    dom::parser::parse_html, js::vm::Interpreter, net::http_client::HttpClient,
+    dom::parser::parse_html,
+    js::{bytecode::eval_via_bytecode, vm::Interpreter},
+    net::http_client::HttpClient,
     webapi::script_runner::run_inline_scripts,
 };
 
@@ -40,6 +42,14 @@ pub fn run() -> anyhow::Result<()> {
                 .context("用法: cargo run -- js \"let a=1; a+1;\"")?;
             let mut interpreter = Interpreter::default();
             let result = interpreter.eval(script)?;
+            println!("result: {result}");
+            Ok(())
+        }
+        Some("js-bc") => {
+            let script = args
+                .get(2)
+                .context("用法: cargo run -- js-bc \"let a=1; a+1;\"")?;
+            let result = eval_via_bytecode(script)?;
             println!("result: {result}");
             Ok(())
         }
@@ -89,6 +99,7 @@ fn print_usage() {
     println!("usage:");
     println!("  cargo run -- load <url>      # 拉取网页、执行内联脚本并输出文本预览");
     println!("  cargo run -- js <script>     # 运行自研 JS 引擎脚本");
+    println!("  cargo run -- js-bc <script>  # 运行字节码解释路径（子集）");
     println!("  cargo run -- summarize <url> # 使用 AI 总结网页");
     println!("  cargo run -- ask <url> <问题> # 基于网页上下文进行问答");
     println!("  cargo run -- window [url]    # 打开窗口壳并加载URL");

@@ -1,6 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use ai_browser::engine::{dom::parser::parse_html, js::vm::Interpreter, webapi::dom_bindings::JsDocumentBinding};
+use ai_browser::engine::{
+    dom::parser::parse_html, js::vm::Interpreter, webapi::dom_bindings::JsDocumentBinding,
+};
 
 #[test]
 fn timer_task_flow() {
