@@ -397,6 +397,9 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expr, ParseError> {
+        if self.is(TokenKind::New) {
+            return self.new_expr();
+        }
         if self.consume_if(TokenKind::Bang) {
             let expr = self.unary()?;
             return Ok(Expr::Unary {
@@ -412,6 +415,48 @@ impl Parser {
             });
         }
         self.call_member()
+    }
+
+    fn new_expr(&mut self) -> Result<Expr, ParseError> {
+        self.expect(TokenKind::New, "new")?;
+        let mut callee = match self.current().kind.clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                Expr::Identifier(name)
+            }
+            _ => {
+                return Err(ParseError::ExpectedToken {
+                    expected: "constructor",
+                    pos: self.current().pos,
+                })
+            }
+        };
+
+        while self.consume_if(TokenKind::Dot) {
+            let prop = self.expect_ident()?;
+            callee = Expr::Member {
+                object: Box::new(callee),
+                property: prop,
+            };
+        }
+
+        let mut args = vec![];
+        if self.consume_if(TokenKind::LParen) {
+            if !self.is(TokenKind::RParen) {
+                loop {
+                    args.push(self.expression()?);
+                    if !self.consume_if(TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::RParen, ")")?;
+        }
+
+        Ok(Expr::New {
+            callee: Box::new(callee),
+            args,
+        })
     }
 
     fn call_member(&mut self) -> Result<Expr, ParseError> {
@@ -455,6 +500,7 @@ impl Parser {
             TokenKind::False => Ok(Expr::Bool(false)),
             TokenKind::Null => Ok(Expr::Null),
             TokenKind::Undefined => Ok(Expr::Undefined),
+            TokenKind::This => Ok(Expr::This),
             TokenKind::Identifier(v) => Ok(Expr::Identifier(v)),
             TokenKind::LParen => {
                 let e = self.expression()?;
@@ -583,5 +629,16 @@ mod tests {
         "#;
         let program = parse_program(code).unwrap();
         assert_eq!(program.body.len(), 1);
+    }
+
+    #[test]
+    fn parse_new_expression() {
+        let code = r#"
+            function User(name) { this.name = name; }
+            let u = new User("A");
+            u.name;
+        "#;
+        let program = parse_program(code).unwrap();
+        assert_eq!(program.body.len(), 3);
     }
 }

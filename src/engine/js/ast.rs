@@ -68,6 +68,7 @@ pub enum Expr {
     Bool(bool),
     Null,
     Undefined,
+    This,
     Identifier(String),
     ObjectLiteral(Vec<(String, Expr)>),
     Binary {
@@ -88,6 +89,10 @@ pub enum Expr {
         property: String,
     },
     Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    New {
         callee: Box<Expr>,
         args: Vec<Expr>,
     },

@@ -15,6 +15,8 @@ pub enum TokenKind {
     Catch,
     Finally,
     Throw,
+    New,
+    This,
     Break,
     Continue,
     True,
@@ -243,6 +245,8 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
                     "catch" => TokenKind::Catch,
                     "finally" => TokenKind::Finally,
                     "throw" => TokenKind::Throw,
+                    "new" => TokenKind::New,
+                    "this" => TokenKind::This,
                     "break" => TokenKind::Break,
                     "continue" => TokenKind::Continue,
                     "true" => TokenKind::True,
@@ -293,5 +297,13 @@ mod tests {
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Catch)));
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Finally)));
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Throw)));
+    }
+
+    #[test]
+    fn lex_new_and_this() {
+        let code = "function A(n){ this.name=n; } let a = new A(\"x\");";
+        let tokens = lex(code).unwrap();
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::New)));
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::This)));
     }
 }

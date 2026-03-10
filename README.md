@@ -16,12 +16,13 @@
 
 ### JS 引擎（v1 子集）
 - Lexer：关键字/标识符/数字/字符串/操作符
-- Parser：变量声明、函数声明、if/while、对象字面量、成员访问、函数调用
-- Interpreter：作用域链、闭包、对象属性读写、原生函数调用
+- Parser：变量声明、函数声明、if/while/for、break/continue、try/catch/finally、throw、new/this
+- Interpreter：作用域链、闭包、对象属性读写、构造调用（new）、原生函数调用
 
 ### WebAPI（简化）
 - 事件循环（microtask/macrotask 简化模型）
-- DOM 绑定：`dom_get_text` / `dom_set_text`（桥接 JS 与 DOM）
+- DOM 绑定：`dom_get_text` / `dom_get_all_text` / `dom_set_text`（桥接 JS 与 DOM）
+- 定时器：可取消 `setTimeout/clearTimeout` 基础调度模型
 - console 参数格式化支持
 
 ### AI 应用层（基础模块）
@@ -88,7 +89,6 @@ export AI_BROWSER_INSECURE_TLS=1
 
 ## 后续路线
 
-- 扩展 JS 语法覆盖（for/new/try-catch 等）
-- 完善 DOM API（querySelectorAll、事件冒泡细节）
+- 完善 DOM API（createElement、appendChild、事件冒泡细节）
 - 增加多标签导航壳与持久化数据层（历史/书签）
 - 引入更完整的 CSS 布局模型和绘制管线

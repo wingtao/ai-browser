@@ -12,6 +12,7 @@ pub struct FunctionValue {
     pub params: Vec<String>,
     pub body: Vec<Stmt>,
     pub closure: EnvRef,
+    pub prototype: ObjectRef,
 }
 
 #[derive(Clone)]

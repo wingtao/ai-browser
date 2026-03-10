@@ -127,7 +127,9 @@ impl Interpreter {
                     params: params.clone(),
                     body: body.clone(),
                     closure: Rc::clone(&env),
+                    prototype: Object::new(),
                 }));
+                self.gc.track_alloc();
                 Environment::define(&env, name.clone(), func.clone());
                 Ok(Flow::Normal(func))
             }
@@ -267,6 +269,9 @@ impl Interpreter {
             Expr::Bool(v) => Ok(Value::Bool(*v)),
             Expr::Null => Ok(Value::Null),
             Expr::Undefined => Ok(Value::Undefined),
+            Expr::This => {
+                Environment::get(&env, "this").ok_or_else(|| anyhow!("this 只能在函数上下文中使用"))
+            }
             Expr::Identifier(name) => {
                 Environment::get(&env, name).ok_or_else(|| anyhow!("未定义变量: {name}"))
             }
@@ -307,6 +312,7 @@ impl Interpreter {
                                 Object::set(&obj_ref, property.clone(), rhs.clone());
                                 Ok(rhs)
                             }
+                            Value::Function(_) => Err(anyhow!("暂不支持重写函数属性")),
                             _ => Err(anyhow!("成员赋值目标不是对象")),
                         }
                     }
@@ -316,6 +322,9 @@ impl Interpreter {
                 let value = self.eval_expr(object, env)?;
                 match value {
                     Value::Object(obj) => Ok(Object::get(&obj, property)),
+                    Value::Function(func) if property == "prototype" => {
+                        Ok(Value::Object(Rc::clone(&func.prototype)))
+                    }
                     _ => Err(anyhow!("成员访问目标不是对象")),
                 }
             }
@@ -326,6 +335,14 @@ impl Interpreter {
                     arg_values.push(self.eval_expr(arg, Rc::clone(&env))?);
                 }
                 self.call(callee_value, arg_values)
+            }
+            Expr::New { callee, args } => {
+                let callee_value = self.eval_expr(callee, Rc::clone(&env))?;
+                let mut arg_values = Vec::with_capacity(args.len());
+                for arg in args {
+                    arg_values.push(self.eval_expr(arg, Rc::clone(&env))?);
+                }
+                self.construct(callee_value, arg_values)
             }
         }
     }
@@ -349,29 +366,54 @@ impl Interpreter {
 
     fn call(&mut self, callee: Value, args: Vec<Value>) -> anyhow::Result<Value> {
         match callee {
-            Value::Function(func) => {
-                let frame = Environment::new(Some(Rc::clone(&func.closure)));
-                for (idx, param) in func.params.iter().enumerate() {
-                    let arg = args.get(idx).cloned().unwrap_or(Value::Undefined);
-                    Environment::define(&frame, param.clone(), arg);
-                }
-                if let Some(name) = &func.name {
-                    Environment::define(&frame, name.clone(), Value::Function(Rc::clone(&func)));
-                }
-                let mut ret = Value::Undefined;
-                for stmt in &func.body {
-                    match self.eval_stmt(stmt, Rc::clone(&frame))? {
-                        Flow::Normal(v) => ret = v,
-                        Flow::Return(v) => return Ok(v),
-                        Flow::Break => return Err(anyhow!("break 不能跨函数边界")),
-                        Flow::Continue => return Err(anyhow!("continue 不能跨函数边界")),
-                    }
-                }
-                Ok(ret)
-            }
+            Value::Function(func) => self.execute_function(&func, args, Value::Undefined),
             Value::NativeFunction { func, .. } => (func)(args).map_err(|e| anyhow!(e)),
             _ => Err(anyhow!("调用目标不可执行")),
         }
+    }
+
+    fn construct(&mut self, callee: Value, args: Vec<Value>) -> anyhow::Result<Value> {
+        match callee {
+            Value::Function(func) => {
+                let instance = Object::new();
+                self.gc.track_alloc();
+                instance.borrow_mut().prototype = Some(Rc::clone(&func.prototype));
+                let ret =
+                    self.execute_function(&func, args, Value::Object(Rc::clone(&instance)))?;
+                match ret {
+                    Value::Object(_) => Ok(ret),
+                    _ => Ok(Value::Object(instance)),
+                }
+            }
+            _ => Err(anyhow!("new 目标不可构造")),
+        }
+    }
+
+    fn execute_function(
+        &mut self,
+        func: &Rc<FunctionValue>,
+        args: Vec<Value>,
+        this_value: Value,
+    ) -> anyhow::Result<Value> {
+        let frame = Environment::new(Some(Rc::clone(&func.closure)));
+        Environment::define(&frame, "this", this_value);
+        for (idx, param) in func.params.iter().enumerate() {
+            let arg = args.get(idx).cloned().unwrap_or(Value::Undefined);
+            Environment::define(&frame, param.clone(), arg);
+        }
+        if let Some(name) = &func.name {
+            Environment::define(&frame, name.clone(), Value::Function(Rc::clone(func)));
+        }
+        let mut ret = Value::Undefined;
+        for stmt in &func.body {
+            match self.eval_stmt(stmt, Rc::clone(&frame))? {
+                Flow::Normal(v) => ret = v,
+                Flow::Return(v) => return Ok(v),
+                Flow::Break => return Err(anyhow!("break 不能跨函数边界")),
+                Flow::Continue => return Err(anyhow!("continue 不能跨函数边界")),
+            }
+        }
+        Ok(ret)
     }
 }
 
@@ -499,6 +541,38 @@ mod tests {
         vm.install_dom_apis(binding);
         let out = vm.eval(r#"dom_get_all_text("p");"#).unwrap();
         assert_eq!(out, Value::String("A\nB".to_string()));
+    }
+
+    #[test]
+    fn eval_new_and_this() {
+        let mut vm = Interpreter::default();
+        let out = vm
+            .eval(
+                r#"
+                function User(name) {
+                    this.name = name;
+                }
+                let u = new User("neo");
+                u.name;
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, Value::String("neo".to_string()));
+    }
+
+    #[test]
+    fn eval_function_prototype_read() {
+        let mut vm = Interpreter::default();
+        let out = vm
+            .eval(
+                r#"
+                function A() {}
+                let p = A.prototype;
+                p;
+            "#,
+            )
+            .unwrap();
+        assert!(matches!(out, Value::Object(_)));
     }
 
     #[test]
