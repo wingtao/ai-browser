@@ -2,9 +2,14 @@ pub mod address_bar;
 pub mod navigation;
 pub mod tab_manager;
 
+use std::{cell::RefCell, rc::Rc};
+
 use anyhow::Context;
 
-use crate::engine::{dom::parser::parse_html, js::vm::Interpreter, net::http_client::HttpClient};
+use crate::engine::{
+    dom::parser::parse_html, js::vm::Interpreter, net::http_client::HttpClient,
+    webapi::script_runner::run_inline_scripts,
+};
 
 pub fn run() -> anyhow::Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
@@ -15,12 +20,14 @@ pub fn run() -> anyhow::Result<()> {
                 .context("用法: cargo run -- load <url>")?
                 .to_string();
             let html = HttpClient::default().get_text(&url)?;
-            let doc = parse_html(&html)?;
+            let doc = Rc::new(RefCell::new(parse_html(&html)?));
+            run_inline_scripts(Rc::clone(&doc))?;
+            let doc_ref = doc.borrow();
             println!(
                 "title: {}",
-                doc.find_title().unwrap_or_else(|| "N/A".to_string())
+                doc_ref.find_title().unwrap_or_else(|| "N/A".to_string())
             );
-            println!("text-preview:\n{}", doc.visible_text(800));
+            println!("text-preview:\n{}", doc_ref.visible_text(800));
             Ok(())
         }
         Some("js") => {
@@ -43,7 +50,7 @@ pub fn run() -> anyhow::Result<()> {
 fn print_usage() {
     println!("ai-browser (from scratch)");
     println!("usage:");
-    println!("  cargo run -- load <url>      # 拉取网页并做 HTML/DOM 文本预览");
+    println!("  cargo run -- load <url>      # 拉取网页、执行内联脚本并输出文本预览");
     println!("  cargo run -- js <script>     # 运行自研 JS 引擎脚本");
     println!("  cargo run -- window          # 打开最小窗口事件循环");
 }
