@@ -71,6 +71,16 @@ impl Interpreter {
                 .unwrap_or(Value::Undefined))
         });
 
+        let read_all_binding = binding.clone();
+        self.define_native_function("dom_get_all_text", move |args| {
+            let selector = args
+                .first()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "body".to_string());
+            let all = read_all_binding.query_selector_all_text(&selector);
+            Ok(Value::String(all.join("\n")))
+        });
+
         self.define_native_function("dom_set_text", move |args| {
             let selector = args
                 .first()
@@ -440,5 +450,15 @@ mod tests {
             .eval(r#"dom_set_text("h1", "World"); dom_get_text("h1");"#)
             .unwrap();
         assert_eq!(out, Value::String("World".to_string()));
+    }
+
+    #[test]
+    fn eval_dom_get_all_text() {
+        let doc = parse_html("<html><body><p>A</p><p>B</p></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        let mut vm = Interpreter::default();
+        vm.install_dom_apis(binding);
+        let out = vm.eval(r#"dom_get_all_text("p");"#).unwrap();
+        assert_eq!(out, Value::String("A\nB".to_string()));
     }
 }

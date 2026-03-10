@@ -31,6 +31,15 @@ impl JsDocumentBinding {
         }
         false
     }
+
+    pub fn query_selector_all_text(&self, selector: &str) -> Vec<String> {
+        let doc = self.doc.borrow();
+        let mut result = Vec::new();
+        for node in &doc.children {
+            find_all_text_by_tag(node, selector, &mut result);
+        }
+        result
+    }
 }
 
 fn find_text_by_tag(node: &Node, selector: &str) -> Option<String> {
@@ -72,6 +81,24 @@ fn set_text_by_tag(node: &mut Node, selector: &str, text: &str) -> bool {
     false
 }
 
+fn find_all_text_by_tag(node: &Node, selector: &str, out: &mut Vec<String>) {
+    if let NodeType::Element(tag) = &node.node_type {
+        if tag.eq_ignore_ascii_case(selector) {
+            for child in &node.children {
+                if let NodeType::Text(t) = &child.node_type {
+                    let text = t.trim();
+                    if !text.is_empty() {
+                        out.push(text.to_string());
+                    }
+                }
+            }
+        }
+    }
+    for child in &node.children {
+        find_all_text_by_tag(child, selector, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,5 +114,14 @@ mod tests {
             binding.query_selector_text("h1").as_deref(),
             Some("Updated")
         );
+    }
+
+    #[test]
+    fn query_selector_all_text() {
+        let doc =
+            parse_html("<html><body><p>A</p><div><p>B</p></div><p>C</p></body></html>").unwrap();
+        let binding = JsDocumentBinding::new(Rc::new(RefCell::new(doc)));
+        let all = binding.query_selector_all_text("p");
+        assert_eq!(all, vec!["A".to_string(), "B".to_string(), "C".to_string()]);
     }
 }
