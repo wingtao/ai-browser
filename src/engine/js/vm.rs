@@ -3,7 +3,7 @@ use std::rc::Rc;
 use anyhow::anyhow;
 
 use super::{
-    ast::{AssignTarget, BinaryOp, Expr, Program, Stmt, UnaryOp},
+    ast::{AssignTarget, BinaryOp, Expr, ForInit, Program, Stmt, UnaryOp},
     parser::parse_program,
     runtime::{
         gc::GcRuntime,
@@ -18,6 +18,8 @@ use crate::engine::webapi::{console::format_console_args, dom_bindings::JsDocume
 enum Flow {
     Normal(Value),
     Return(Value),
+    Break,
+    Continue,
 }
 
 #[derive(Debug)]
@@ -91,6 +93,8 @@ impl Interpreter {
             match self.eval_stmt(stmt, Rc::clone(&env))? {
                 Flow::Normal(v) => last = v,
                 Flow::Return(v) => return Ok(v),
+                Flow::Break => return Err(anyhow!("break 只能在循环内部使用")),
+                Flow::Continue => return Err(anyhow!("continue 只能在循环内部使用")),
             }
         }
         Ok(last)
@@ -144,10 +148,49 @@ impl Interpreter {
                     match self.eval_stmt(body, Rc::clone(&env))? {
                         Flow::Normal(v) => last = v,
                         Flow::Return(v) => return Ok(Flow::Return(v)),
+                        Flow::Break => break,
+                        Flow::Continue => continue,
                     }
                 }
                 Ok(Flow::Normal(last))
             }
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                let loop_env = Environment::new(Some(env));
+                if let Some(init) = init {
+                    self.eval_for_init(init, Rc::clone(&loop_env))?;
+                }
+
+                let mut last = Value::Undefined;
+                loop {
+                    if let Some(test) = test {
+                        if !self.eval_expr(test, Rc::clone(&loop_env))?.truthy() {
+                            break;
+                        }
+                    }
+                    match self.eval_stmt(body, Rc::clone(&loop_env))? {
+                        Flow::Normal(v) => last = v,
+                        Flow::Return(v) => return Ok(Flow::Return(v)),
+                        Flow::Break => break,
+                        Flow::Continue => {
+                            if let Some(update_expr) = update {
+                                self.eval_expr(update_expr, Rc::clone(&loop_env))?;
+                            }
+                            continue;
+                        }
+                    }
+                    if let Some(update_expr) = update {
+                        self.eval_expr(update_expr, Rc::clone(&loop_env))?;
+                    }
+                }
+                Ok(Flow::Normal(last))
+            }
+            Stmt::Break => Ok(Flow::Break),
+            Stmt::Continue => Ok(Flow::Continue),
             Stmt::Block(stmts) => {
                 let block = Environment::new(Some(env));
                 let mut last = Value::Undefined;
@@ -155,6 +198,8 @@ impl Interpreter {
                     match self.eval_stmt(stmt, Rc::clone(&block))? {
                         Flow::Normal(v) => last = v,
                         Flow::Return(v) => return Ok(Flow::Return(v)),
+                        Flow::Break => return Ok(Flow::Break),
+                        Flow::Continue => return Ok(Flow::Continue),
                     }
                 }
                 Ok(Flow::Normal(last))
@@ -236,6 +281,23 @@ impl Interpreter {
         }
     }
 
+    fn eval_for_init(&mut self, init: &ForInit, env: EnvRef) -> anyhow::Result<()> {
+        match init {
+            ForInit::VarDecl { name, init, .. } => {
+                let val = if let Some(expr) = init {
+                    self.eval_expr(expr, Rc::clone(&env))?
+                } else {
+                    Value::Undefined
+                };
+                Environment::define(&env, name.clone(), val);
+            }
+            ForInit::Expr(expr) => {
+                self.eval_expr(expr, env)?;
+            }
+        }
+        Ok(())
+    }
+
     fn call(&mut self, callee: Value, args: Vec<Value>) -> anyhow::Result<Value> {
         match callee {
             Value::Function(func) => {
@@ -252,6 +314,8 @@ impl Interpreter {
                     match self.eval_stmt(stmt, Rc::clone(&frame))? {
                         Flow::Normal(v) => ret = v,
                         Flow::Return(v) => return Ok(v),
+                        Flow::Break => return Err(anyhow!("break 不能跨函数边界")),
+                        Flow::Continue => return Err(anyhow!("continue 不能跨函数边界")),
                     }
                 }
                 Ok(ret)
@@ -345,6 +409,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(out, Value::Number(3.0));
+    }
+
+    #[test]
+    fn eval_for_with_break_continue() {
+        let mut vm = Interpreter::default();
+        let out = vm
+            .eval(
+                r#"
+                let s = 0;
+                for (let i = 0; i < 6; i = i + 1) {
+                    if (i == 2) { continue; }
+                    if (i == 5) { break; }
+                    s = s + i;
+                }
+                s;
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, Value::Number(8.0));
     }
 
     #[test]

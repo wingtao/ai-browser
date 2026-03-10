@@ -10,6 +10,9 @@ pub enum TokenKind {
     If,
     Else,
     While,
+    For,
+    Break,
+    Continue,
     True,
     False,
     Null,
@@ -231,6 +234,9 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "while" => TokenKind::While,
+                    "for" => TokenKind::For,
+                    "break" => TokenKind::Break,
+                    "continue" => TokenKind::Continue,
                     "true" => TokenKind::True,
                     "false" => TokenKind::False,
                     "null" => TokenKind::Null,
@@ -260,5 +266,14 @@ mod tests {
         let tokens = lex(code).unwrap();
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Function)));
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Return)));
+    }
+
+    #[test]
+    fn lex_for_break_continue() {
+        let code = "for(let i=0;i<3;i=i+1){ if(i==1){continue;} break; }";
+        let tokens = lex(code).unwrap();
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::For)));
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Break)));
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Continue)));
     }
 }

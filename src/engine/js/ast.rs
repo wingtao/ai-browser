@@ -25,7 +25,25 @@ pub enum Stmt {
         test: Expr,
         body: Box<Stmt>,
     },
+    For {
+        init: Option<ForInit>,
+        test: Option<Expr>,
+        update: Option<Expr>,
+        body: Box<Stmt>,
+    },
+    Break,
+    Continue,
     Block(Vec<Stmt>),
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForInit {
+    VarDecl {
+        kind: VarKind,
+        name: String,
+        init: Option<Expr>,
+    },
     Expr(Expr),
 }
 

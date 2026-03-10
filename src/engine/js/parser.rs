@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use super::{
-    ast::{AssignTarget, BinaryOp, Expr, Program, Stmt, UnaryOp, VarKind},
+    ast::{AssignTarget, BinaryOp, Expr, ForInit, Program, Stmt, UnaryOp, VarKind},
     lexer::{lex, Token, TokenKind},
 };
 
@@ -37,13 +37,16 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
         match self.peek_kind() {
-            TokenKind::Let => self.var_decl(VarKind::Let),
-            TokenKind::Const => self.var_decl(VarKind::Const),
-            TokenKind::Var => self.var_decl(VarKind::Var),
+            TokenKind::Let => self.var_decl(VarKind::Let, true),
+            TokenKind::Const => self.var_decl(VarKind::Const, true),
+            TokenKind::Var => self.var_decl(VarKind::Var, true),
             TokenKind::Function => self.function_decl(),
             TokenKind::Return => self.return_stmt(),
             TokenKind::If => self.if_stmt(),
             TokenKind::While => self.while_stmt(),
+            TokenKind::For => self.for_stmt(),
+            TokenKind::Break => self.break_stmt(),
+            TokenKind::Continue => self.continue_stmt(),
             TokenKind::LBrace => self.block_stmt(),
             _ => {
                 let expr = self.expression()?;
@@ -53,7 +56,7 @@ impl Parser {
         }
     }
 
-    fn var_decl(&mut self, kind: VarKind) -> Result<Stmt, ParseError> {
+    fn var_decl(&mut self, kind: VarKind, with_semicolon: bool) -> Result<Stmt, ParseError> {
         self.advance();
         let name = self.expect_ident()?;
         let init = if self.consume_if(TokenKind::Assign) {
@@ -61,7 +64,9 @@ impl Parser {
         } else {
             None
         };
-        self.consume_if(TokenKind::Semicolon);
+        if with_semicolon {
+            self.consume_if(TokenKind::Semicolon);
+        }
         Ok(Stmt::VarDecl { kind, name, init })
     }
 
@@ -122,6 +127,75 @@ impl Parser {
         self.expect(TokenKind::RParen, ")")?;
         let body = Box::new(self.statement()?);
         Ok(Stmt::While { test, body })
+    }
+
+    fn for_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.expect(TokenKind::For, "for")?;
+        self.expect(TokenKind::LParen, "(")?;
+
+        let init = if self.is(TokenKind::Semicolon) {
+            None
+        } else {
+            match self.peek_kind() {
+                TokenKind::Let => {
+                    let Stmt::VarDecl { kind, name, init } = self.var_decl(VarKind::Let, false)?
+                    else {
+                        unreachable!()
+                    };
+                    Some(ForInit::VarDecl { kind, name, init })
+                }
+                TokenKind::Const => {
+                    let Stmt::VarDecl { kind, name, init } =
+                        self.var_decl(VarKind::Const, false)?
+                    else {
+                        unreachable!()
+                    };
+                    Some(ForInit::VarDecl { kind, name, init })
+                }
+                TokenKind::Var => {
+                    let Stmt::VarDecl { kind, name, init } = self.var_decl(VarKind::Var, false)?
+                    else {
+                        unreachable!()
+                    };
+                    Some(ForInit::VarDecl { kind, name, init })
+                }
+                _ => Some(ForInit::Expr(self.expression()?)),
+            }
+        };
+        self.expect(TokenKind::Semicolon, ";")?;
+
+        let test = if self.is(TokenKind::Semicolon) {
+            None
+        } else {
+            Some(self.expression()?)
+        };
+        self.expect(TokenKind::Semicolon, ";")?;
+
+        let update = if self.is(TokenKind::RParen) {
+            None
+        } else {
+            Some(self.expression()?)
+        };
+        self.expect(TokenKind::RParen, ")")?;
+        let body = Box::new(self.statement()?);
+        Ok(Stmt::For {
+            init,
+            test,
+            update,
+            body,
+        })
+    }
+
+    fn break_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.expect(TokenKind::Break, "break")?;
+        self.consume_if(TokenKind::Semicolon);
+        Ok(Stmt::Break)
+    }
+
+    fn continue_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.expect(TokenKind::Continue, "continue")?;
+        self.consume_if(TokenKind::Semicolon);
+        Ok(Stmt::Continue)
     }
 
     fn block_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -438,6 +512,21 @@ mod tests {
             function add(a,b){ return a+b; }
             let x = add(1,2);
             if (x > 2) { x = x + 1; }
+        "#;
+        let program = parse_program(code).unwrap();
+        assert_eq!(program.body.len(), 3);
+    }
+
+    #[test]
+    fn parse_for_break_continue() {
+        let code = r#"
+            let s = 0;
+            for (let i = 0; i < 5; i = i + 1) {
+                if (i == 2) { continue; }
+                if (i == 4) { break; }
+                s = s + i;
+            }
+            s;
         "#;
         let program = parse_program(code).unwrap();
         assert_eq!(program.body.len(), 3);
