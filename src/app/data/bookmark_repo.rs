@@ -19,6 +19,13 @@ impl BookmarkRepository {
         Ok(repo)
     }
 
+    pub fn open(path: &str) -> anyhow::Result<Self> {
+        let conn = Connection::open(path)?;
+        let repo = Self { conn };
+        repo.init_schema()?;
+        Ok(repo)
+    }
+
     fn init_schema(&self) -> anyhow::Result<()> {
         self.conn.execute_batch(
             r#"

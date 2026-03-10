@@ -96,6 +96,20 @@ cargo run -- summarize http://example.com
 cargo run -- ask http://example.com "这个页面讲了什么？"
 ```
 
+### 7) 历史与书签（本地 SQLite）
+```bash
+# 可选：指定数据库路径
+export AI_BROWSER_DB=./ai_browser.db
+
+cargo run -- history-add http://example.com "Example Domain"
+cargo run -- history-list 20
+cargo run -- history-clear
+
+cargo run -- bookmark-add http://example.com "Example Domain"
+cargo run -- bookmark-list
+cargo run -- bookmark-remove http://example.com
+```
+
 ## AI 能力配置
 
 设置以下环境变量后可接入兼容 Chat Completions 的模型服务：

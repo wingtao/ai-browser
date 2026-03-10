@@ -10,6 +10,7 @@ use anyhow::Context;
 use crate::app::ai::{
     client::AiClient, page_context::PageContext, page_qa::ask_page, summarizer::summarize_page,
 };
+use crate::app::data::{bookmark_repo::BookmarkRepository, history_repo::HistoryRepository};
 use crate::engine::{
     dom::parser::parse_html,
     js::{bytecode::eval_via_bytecode, vm::Interpreter},
@@ -54,6 +55,73 @@ pub fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Some("window") => run_window(args.get(2).cloned()),
+        Some("history-add") => {
+            let url = args
+                .get(2)
+                .context("用法: cargo run -- history-add <url> <title>")?;
+            let title = args
+                .get(3..)
+                .map(|parts| parts.join(" "))
+                .filter(|s| !s.trim().is_empty())
+                .context("用法: cargo run -- history-add <url> <title>")?;
+            let repo = HistoryRepository::open(&db_path())?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs() as i64;
+            repo.add_visit(url, &title, now)?;
+            println!("ok");
+            Ok(())
+        }
+        Some("history-list") => {
+            let limit = args
+                .get(2)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(20);
+            let repo = HistoryRepository::open(&db_path())?;
+            for item in repo.list_recent(limit)? {
+                println!(
+                    "[{}] {} | {} | {}",
+                    item.id, item.visited_at, item.title, item.url
+                );
+            }
+            Ok(())
+        }
+        Some("history-clear") => {
+            let repo = HistoryRepository::open(&db_path())?;
+            repo.clear()?;
+            println!("ok");
+            Ok(())
+        }
+        Some("bookmark-add") => {
+            let url = args
+                .get(2)
+                .context("用法: cargo run -- bookmark-add <url> <title>")?;
+            let title = args
+                .get(3..)
+                .map(|parts| parts.join(" "))
+                .filter(|s| !s.trim().is_empty())
+                .context("用法: cargo run -- bookmark-add <url> <title>")?;
+            let repo = BookmarkRepository::open(&db_path())?;
+            repo.add(&title, url)?;
+            println!("ok");
+            Ok(())
+        }
+        Some("bookmark-list") => {
+            let repo = BookmarkRepository::open(&db_path())?;
+            for item in repo.list()? {
+                println!("[{}] {} | {}", item.id, item.title, item.url);
+            }
+            Ok(())
+        }
+        Some("bookmark-remove") => {
+            let url = args
+                .get(2)
+                .context("用法: cargo run -- bookmark-remove <url>")?;
+            let repo = BookmarkRepository::open(&db_path())?;
+            repo.remove_by_url(url)?;
+            println!("ok");
+            Ok(())
+        }
         Some("summarize") => {
             let url = args
                 .get(2)
@@ -100,9 +168,19 @@ fn print_usage() {
     println!("  cargo run -- load <url>      # 拉取网页、执行内联脚本并输出文本预览");
     println!("  cargo run -- js <script>     # 运行自研 JS 引擎脚本");
     println!("  cargo run -- js-bc <script>  # 运行字节码解释路径（子集）");
+    println!("  cargo run -- history-add <url> <title>");
+    println!("  cargo run -- history-list [limit]");
+    println!("  cargo run -- history-clear");
+    println!("  cargo run -- bookmark-add <url> <title>");
+    println!("  cargo run -- bookmark-list");
+    println!("  cargo run -- bookmark-remove <url>");
     println!("  cargo run -- summarize <url> # 使用 AI 总结网页");
     println!("  cargo run -- ask <url> <问题> # 基于网页上下文进行问答");
     println!("  cargo run -- window [url]    # 打开窗口壳并加载URL");
+}
+
+fn db_path() -> String {
+    std::env::var("AI_BROWSER_DB").unwrap_or_else(|_| "ai_browser.db".to_string())
 }
 
 fn run_window(start_url: Option<String>) -> anyhow::Result<()> {
