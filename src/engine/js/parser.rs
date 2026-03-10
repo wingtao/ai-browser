@@ -45,6 +45,8 @@ impl Parser {
             TokenKind::If => self.if_stmt(),
             TokenKind::While => self.while_stmt(),
             TokenKind::For => self.for_stmt(),
+            TokenKind::Try => self.try_stmt(),
+            TokenKind::Throw => self.throw_stmt(),
             TokenKind::Break => self.break_stmt(),
             TokenKind::Continue => self.continue_stmt(),
             TokenKind::LBrace => self.block_stmt(),
@@ -196,6 +198,46 @@ impl Parser {
         self.expect(TokenKind::Continue, "continue")?;
         self.consume_if(TokenKind::Semicolon);
         Ok(Stmt::Continue)
+    }
+
+    fn try_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.expect(TokenKind::Try, "try")?;
+        let try_block = Box::new(self.block_stmt()?);
+
+        let mut catch_param = None;
+        let mut catch_block = None;
+        if self.consume_if(TokenKind::Catch) {
+            self.expect(TokenKind::LParen, "(")?;
+            catch_param = Some(self.expect_ident()?);
+            self.expect(TokenKind::RParen, ")")?;
+            catch_block = Some(Box::new(self.block_stmt()?));
+        }
+
+        let mut finally_block = None;
+        if self.consume_if(TokenKind::Finally) {
+            finally_block = Some(Box::new(self.block_stmt()?));
+        }
+
+        if catch_block.is_none() && finally_block.is_none() {
+            return Err(ParseError::ExpectedToken {
+                expected: "catch/finally",
+                pos: self.current().pos,
+            });
+        }
+
+        Ok(Stmt::Try {
+            try_block,
+            catch_param,
+            catch_block,
+            finally_block,
+        })
+    }
+
+    fn throw_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.expect(TokenKind::Throw, "throw")?;
+        let expr = self.expression()?;
+        self.consume_if(TokenKind::Semicolon);
+        Ok(Stmt::Throw(expr))
     }
 
     fn block_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -530,5 +572,16 @@ mod tests {
         "#;
         let program = parse_program(code).unwrap();
         assert_eq!(program.body.len(), 3);
+    }
+
+    #[test]
+    fn parse_try_catch_finally() {
+        let code = r#"
+            try { throw "x"; }
+            catch (e) { print(e); }
+            finally { print("done"); }
+        "#;
+        let program = parse_program(code).unwrap();
+        assert_eq!(program.body.len(), 1);
     }
 }

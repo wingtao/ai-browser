@@ -31,6 +31,13 @@ pub enum Stmt {
         update: Option<Expr>,
         body: Box<Stmt>,
     },
+    Try {
+        try_block: Box<Stmt>,
+        catch_param: Option<String>,
+        catch_block: Option<Box<Stmt>>,
+        finally_block: Option<Box<Stmt>>,
+    },
+    Throw(Expr),
     Break,
     Continue,
     Block(Vec<Stmt>),

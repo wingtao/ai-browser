@@ -199,6 +199,45 @@ impl Interpreter {
                 }
                 Ok(Flow::Normal(last))
             }
+            Stmt::Try {
+                try_block,
+                catch_param,
+                catch_block,
+                finally_block,
+            } => {
+                let mut result = self.eval_stmt(try_block, Rc::clone(&env));
+
+                if let Err(err) = result {
+                    if let Some(catch_block) = catch_block {
+                        let catch_env = Environment::new(Some(Rc::clone(&env)));
+                        if let Some(param) = catch_param {
+                            Environment::define(
+                                &catch_env,
+                                param.clone(),
+                                Value::String(err.to_string()),
+                            );
+                        }
+                        result = self.eval_stmt(catch_block, catch_env);
+                    } else {
+                        return Err(err);
+                    }
+                }
+
+                if let Some(finally_block) = finally_block {
+                    match self.eval_stmt(finally_block, Environment::new(Some(env)))? {
+                        Flow::Normal(_) => {}
+                        Flow::Return(v) => return Ok(Flow::Return(v)),
+                        Flow::Break => return Ok(Flow::Break),
+                        Flow::Continue => return Ok(Flow::Continue),
+                    }
+                }
+
+                result
+            }
+            Stmt::Throw(expr) => {
+                let value = self.eval_expr(expr, env)?;
+                Err(anyhow!("throw: {value}"))
+            }
             Stmt::Break => Ok(Flow::Break),
             Stmt::Continue => Ok(Flow::Continue),
             Stmt::Block(stmts) => {
@@ -460,5 +499,29 @@ mod tests {
         vm.install_dom_apis(binding);
         let out = vm.eval(r#"dom_get_all_text("p");"#).unwrap();
         assert_eq!(out, Value::String("A\nB".to_string()));
+    }
+
+    #[test]
+    fn eval_try_catch_finally() {
+        let mut vm = Interpreter::default();
+        let out = vm
+            .eval(
+                r#"
+                let x = 0;
+                try { throw "bad"; }
+                catch (e) { x = 2; }
+                finally { x = x + 1; }
+                x;
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, Value::Number(3.0));
+    }
+
+    #[test]
+    fn eval_uncaught_throw_should_error() {
+        let mut vm = Interpreter::default();
+        let err = vm.eval(r#"throw "oops";"#).unwrap_err();
+        assert!(err.to_string().contains("throw: oops"));
     }
 }

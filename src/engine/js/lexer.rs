@@ -11,6 +11,10 @@ pub enum TokenKind {
     Else,
     While,
     For,
+    Try,
+    Catch,
+    Finally,
+    Throw,
     Break,
     Continue,
     True,
@@ -235,6 +239,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
                     "else" => TokenKind::Else,
                     "while" => TokenKind::While,
                     "for" => TokenKind::For,
+                    "try" => TokenKind::Try,
+                    "catch" => TokenKind::Catch,
+                    "finally" => TokenKind::Finally,
+                    "throw" => TokenKind::Throw,
                     "break" => TokenKind::Break,
                     "continue" => TokenKind::Continue,
                     "true" => TokenKind::True,
@@ -275,5 +283,15 @@ mod tests {
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::For)));
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Break)));
         assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Continue)));
+    }
+
+    #[test]
+    fn lex_try_catch_finally() {
+        let code = "try { throw \"x\"; } catch (e) { print(e); } finally { print(\"done\"); }";
+        let tokens = lex(code).unwrap();
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Try)));
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Catch)));
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Finally)));
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Throw)));
     }
 }
