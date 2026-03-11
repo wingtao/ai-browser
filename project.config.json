@@ -1,0 +1,18 @@
+{
+  "description": "mist-breakout-mvp",
+  "packOptions": {
+    "ignore": []
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": false,
+    "enhance": true
+  },
+  "compileType": "game",
+  "libVersion": "3.6.3",
+  "appid": "touristappid",
+  "projectname": "mist-breakout",
+  "condition": {}
+}
