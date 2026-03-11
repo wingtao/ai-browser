@@ -7,13 +7,15 @@ import { VIEWPORT } from "../layout";
 import { Renderer } from "../renderer";
 import { THEME } from "../theme";
 
-export type ResultAction = "restart" | null;
+export type ResultAction = "restart" | "readability_clear" | "readability_busy" | null;
 
 export class ResultScene {
   private renderer: Renderer;
   private state: GameRunState | null = null;
   private report: SystemObservationReport | null = null;
   private restartButton: ButtonViewModel | null = null;
+  private clearButton: ButtonViewModel | null = null;
+  private busyButton: ButtonViewModel | null = null;
 
   constructor(renderer: Renderer) {
     this.renderer = renderer;
@@ -22,6 +24,9 @@ export class ResultScene {
   setResult(state: GameRunState, report: SystemObservationReport): void {
     this.state = state;
     this.report = report;
+    this.restartButton = null;
+    this.clearButton = null;
+    this.busyButton = null;
   }
 
   render(ctx: CanvasRenderingContext2D): void {
@@ -79,24 +84,58 @@ export class ResultScene {
       text: "再来一局",
       subtext: "尝试新的节奏切换",
       x: 80,
-      y: 994,
+      y: 980,
       width: VIEWPORT.width - 160,
-      height: 116
+      height: 108
     };
     drawButton(ctx, this.restartButton);
+
+    this.clearButton = {
+      id: "readability_clear",
+      text: "界面清晰",
+      subtext: "可读性良好",
+      x: 80,
+      y: 1110,
+      width: 278,
+      height: 92
+    };
+    this.busyButton = {
+      id: "readability_busy",
+      text: "信息偏花",
+      subtext: "希望更聚焦",
+      x: 392,
+      y: 1110,
+      width: 278,
+      height: 92
+    };
+    drawButton(ctx, this.clearButton);
+    drawButton(ctx, this.busyButton);
   }
 
   onTouch(x: number, y: number): ResultAction {
-    if (!this.restartButton) {
+    if (!this.restartButton || !this.clearButton || !this.busyButton) {
       return null;
     }
-    const hit =
-      x >= this.restartButton.x &&
-      x <= this.restartButton.x + this.restartButton.width &&
-      y >= this.restartButton.y &&
-      y <= this.restartButton.y + this.restartButton.height;
-    return hit ? "restart" : null;
+    if (isHit(x, y, this.restartButton)) {
+      return "restart";
+    }
+    if (isHit(x, y, this.clearButton)) {
+      return "readability_clear";
+    }
+    if (isHit(x, y, this.busyButton)) {
+      return "readability_busy";
+    }
+    return null;
   }
+}
+
+function isHit(x: number, y: number, button: ButtonViewModel): boolean {
+  return (
+    x >= button.x &&
+    x <= button.x + button.width &&
+    y >= button.y &&
+    y <= button.y + button.height
+  );
 }
 
 function wrapText(

@@ -203,5 +203,6 @@ MVP 只验证：
 - `battle_end`
 - `failure_reason`
 - `show_post_report`
+- `readability_feedback`（结算页主观可读性反馈：clear / busy）
 - `click_restart`
 

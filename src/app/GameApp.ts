@@ -4,7 +4,7 @@ import { GameEngine } from "../core/gameEngine";
 import { TouchInput } from "../input/touchInput";
 import { TelemetryTracker } from "../telemetry/tracker";
 import { VIEWPORT } from "../ui/layout";
-import { Renderer } from "../ui/renderer";
+import { Renderer, type VisualQualityLevel } from "../ui/renderer";
 import { BattleScene } from "../ui/scenes/BattleScene";
 import { HomeScene } from "../ui/scenes/HomeScene";
 import { ResultScene } from "../ui/scenes/ResultScene";
@@ -13,7 +13,13 @@ type SceneId = "home" | "battle" | "result";
 
 interface WxLike {
   createCanvas?: () => HTMLCanvasElement;
-  getSystemInfoSync?: () => { windowWidth: number; windowHeight: number; pixelRatio: number };
+  getSystemInfoSync?: () => {
+    windowWidth: number;
+    windowHeight: number;
+    pixelRatio: number;
+    benchmarkLevel?: number;
+    memorySize?: number;
+  };
   onTouchStart?: (cb: (event: { changedTouches: Array<{ clientX: number; clientY: number }> }) => void) => void;
   getStorageSync?: (key: string) => string;
   setStorageSync?: (key: string, value: string) => void;
@@ -33,6 +39,15 @@ export class GameApp {
   private readonly tracker: TelemetryTracker;
   private readonly engine: GameEngine;
   private readonly touchInput: TouchInput;
+  private readonly systemInfo:
+    | {
+        windowWidth: number;
+        windowHeight: number;
+        pixelRatio: number;
+        benchmarkLevel?: number;
+        memorySize?: number;
+      }
+    | undefined;
   private scene: SceneId = "home";
   private runIndex = 0;
   private latestState: GameRunState | null = null;
@@ -48,7 +63,8 @@ export class GameApp {
       throw new Error("Canvas 2D context unavailable");
     }
     this.ctx = context;
-    this.renderer = new Renderer();
+    this.systemInfo = this.wxLike.getSystemInfoSync?.();
+    this.renderer = new Renderer(this.detectVisualQuality(this.systemInfo));
     this.homeScene = new HomeScene(this.renderer);
     this.battleScene = new BattleScene(this.renderer);
     this.resultScene = new ResultScene(this.renderer);
@@ -114,6 +130,10 @@ export class GameApp {
       if (action === "restart") {
         this.tracker.track("click_restart");
         this.startRun();
+      } else if (action === "readability_clear" || action === "readability_busy") {
+        this.tracker.track("readability_feedback", {
+          feedback: action === "readability_clear" ? "clear" : "busy"
+        });
       }
     }
   }
@@ -162,10 +182,11 @@ export class GameApp {
   }
 
   private setupViewport(): void {
-    const info = this.wxLike.getSystemInfoSync?.();
+    const info = this.systemInfo;
     if (!info) {
       this.canvas.width = VIEWPORT.width;
       this.canvas.height = VIEWPORT.height;
+      this.renderer.setQuality("high");
       return;
     }
 
@@ -178,8 +199,33 @@ export class GameApp {
       canvasWithStyle.style.width = `${info.windowWidth}px`;
       canvasWithStyle.style.height = `${info.windowHeight}px`;
     }
+    this.renderer.setQuality(this.detectVisualQuality(info));
     this.ctx.setTransform(info.pixelRatio, 0, 0, info.pixelRatio, 0, 0);
     this.ctx.scale(this.scaleX, this.scaleY);
+  }
+
+  private detectVisualQuality(
+    info:
+      | {
+          pixelRatio: number;
+          benchmarkLevel?: number;
+          memorySize?: number;
+        }
+      | undefined
+  ): VisualQualityLevel {
+    if (!info) {
+      return "high";
+    }
+    if ((info.benchmarkLevel ?? 0) > 0 && (info.benchmarkLevel ?? 0) <= 22) {
+      return "low";
+    }
+    if ((info.memorySize ?? 0) > 0 && (info.memorySize ?? 0) <= 2048) {
+      return "low";
+    }
+    if (info.pixelRatio <= 2) {
+      return "low";
+    }
+    return "high";
   }
 }
 

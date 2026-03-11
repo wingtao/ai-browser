@@ -30,6 +30,7 @@
 ## 2.3 ui（表现层）
 
 - `renderer.ts`：背景雾层、面板、发光文本等基础绘制
+- `renderer.ts` 支持高/低画质切换（雾层粒子数、扫描线开关）
 - `scenes/*`：Home/Battle/Result 场景渲染
 - `components/Button.ts`：统一按钮组件
 
@@ -40,6 +41,7 @@
 ## 2.5 telemetry（埋点）
 
 - `tracker.ts`：事件记录（可落微信本地存储）
+- 结算页支持主观可读性反馈事件：`readability_feedback`
 
 ---
 

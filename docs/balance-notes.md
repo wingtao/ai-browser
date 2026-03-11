@@ -70,4 +70,5 @@
 - `home_stay_duration`：用于统计首页停留时长
 - `click_start_battle`：用于计算首局开始点击率
 - `show_post_report`：用于确认局后复盘曝光率
+- `readability_feedback`：用于采集玩家主观可读性反馈（clear/busy）
 

@@ -9,18 +9,45 @@ interface FogParticle {
   alpha: number;
 }
 
+export type VisualQualityLevel = "high" | "low";
+
+interface VisualConfig {
+  enableFog: boolean;
+  enableScanLine: boolean;
+  enableGlow: boolean;
+  particleCount: number;
+}
+
+function qualityConfig(level: VisualQualityLevel): VisualConfig {
+  if (level === "low") {
+    return {
+      enableFog: true,
+      enableScanLine: false,
+      enableGlow: true,
+      particleCount: 12
+    };
+  }
+  return {
+    enableFog: true,
+    enableScanLine: true,
+    enableGlow: true,
+    particleCount: 22
+  };
+}
+
 export class Renderer {
   private fogParticles: FogParticle[];
   private startTime = Date.now();
+  private config: VisualConfig;
 
-  constructor() {
-    this.fogParticles = Array.from({ length: 22 }).map((_, idx) => ({
-      x: (idx * 97) % VIEWPORT.width,
-      y: (idx * 151) % VIEWPORT.height,
-      r: 80 + (idx % 5) * 26,
-      speed: 0.2 + (idx % 4) * 0.06,
-      alpha: 0.05 + (idx % 6) * 0.015
-    }));
+  constructor(level: VisualQualityLevel = "high") {
+    this.config = qualityConfig(level);
+    this.fogParticles = this.createFogParticles(this.config.particleCount);
+  }
+
+  setQuality(level: VisualQualityLevel): void {
+    this.config = qualityConfig(level);
+    this.fogParticles = this.createFogParticles(this.config.particleCount);
   }
 
   clear(ctx: CanvasRenderingContext2D): void {
@@ -34,8 +61,12 @@ export class Renderer {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, VIEWPORT.width, VIEWPORT.height);
 
-    this.drawFog(ctx);
-    this.drawScanLine(ctx);
+    if (this.config.enableFog) {
+      this.drawFog(ctx);
+    }
+    if (this.config.enableScanLine) {
+      this.drawScanLine(ctx);
+    }
   }
 
   drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number): void {
@@ -61,10 +92,22 @@ export class Renderer {
     ctx.save();
     ctx.font = font;
     ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 20;
+    if (this.config.enableGlow) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 20;
+    }
     ctx.fillText(text, x, y);
     ctx.restore();
+  }
+
+  private createFogParticles(count: number): FogParticle[] {
+    return Array.from({ length: count }).map((_, idx) => ({
+      x: (idx * 97) % VIEWPORT.width,
+      y: (idx * 151) % VIEWPORT.height,
+      r: 80 + (idx % 5) * 26,
+      speed: 0.2 + (idx % 4) * 0.06,
+      alpha: 0.05 + (idx % 6) * 0.015
+    }));
   }
 
   private drawFog(ctx: CanvasRenderingContext2D): void {
