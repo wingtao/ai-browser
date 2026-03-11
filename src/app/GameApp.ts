@@ -38,6 +38,7 @@ export class GameApp {
   private latestState: GameRunState | null = null;
   private scaleX = 1;
   private scaleY = 1;
+  private homeEnterTimestamp = Date.now();
 
   constructor() {
     this.wxLike = typeof wx === "undefined" ? {} : wx;
@@ -58,6 +59,7 @@ export class GameApp {
   }
 
   start(): void {
+    this.homeEnterTimestamp = Date.now();
     this.tracker.track("enter_home");
     this.touchInput.bind((point) => this.handleTouch(point.x / this.scaleX, point.y / this.scaleY));
     this.loop();
@@ -117,6 +119,11 @@ export class GameApp {
   }
 
   private startRun(): void {
+    const homeStayMs = Date.now() - this.homeEnterTimestamp;
+    if (this.scene === "home") {
+      this.tracker.track("home_stay_duration", { durationMs: homeStayMs });
+      this.tracker.track("click_start_battle", { fromRunIndex: this.runIndex + 1 });
+    }
     this.runIndex += 1;
     this.latestState = this.engine.startRun(this.runIndex);
     this.battleScene.setState(this.latestState);
@@ -136,6 +143,10 @@ export class GameApp {
       });
       this.resultScene.setResult(this.latestState, report);
       this.scene = "result";
+      this.tracker.track("show_post_report", {
+        endReason: this.latestState.endReason,
+        mainStyle: report.mainStyle
+      });
       return;
     }
     this.battleScene.setState(this.latestState);
@@ -162,8 +173,11 @@ export class GameApp {
     this.scaleY = info.windowHeight / VIEWPORT.height;
     this.canvas.width = Math.floor(VIEWPORT.width * info.pixelRatio);
     this.canvas.height = Math.floor(VIEWPORT.height * info.pixelRatio);
-    this.canvas.style.width = `${info.windowWidth}px`;
-    this.canvas.style.height = `${info.windowHeight}px`;
+    const canvasWithStyle = this.canvas as HTMLCanvasElement & { style?: { width?: string; height?: string } };
+    if (canvasWithStyle.style) {
+      canvasWithStyle.style.width = `${info.windowWidth}px`;
+      canvasWithStyle.style.height = `${info.windowHeight}px`;
+    }
     this.ctx.setTransform(info.pixelRatio, 0, 0, info.pixelRatio, 0, 0);
     this.ctx.scale(this.scaleX, this.scaleY);
   }

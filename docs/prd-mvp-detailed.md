@@ -192,6 +192,8 @@ MVP 只验证：
 ## 10. 埋点定义（MVP）
 
 - `enter_home`
+- `home_stay_duration`（首页停留时长，ms）
+- `click_start_battle`
 - `start_battle`
 - `show_actions`
 - `choose_action`
@@ -200,5 +202,6 @@ MVP 只验证：
 - `trigger_event`
 - `battle_end`
 - `failure_reason`
+- `show_post_report`
 - `click_restart`
 
