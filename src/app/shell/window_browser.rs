@@ -24,23 +24,12 @@ struct PageSnapshot {
     last_error: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct BrowserRuntime {
     tabs: TabManager,
     navs: HashMap<u64, NavigationState>,
     pages: HashMap<u64, PageSnapshot>,
     client: HttpClient,
-}
-
-impl Default for BrowserRuntime {
-    fn default() -> Self {
-        Self {
-            tabs: TabManager::default(),
-            navs: HashMap::new(),
-            pages: HashMap::new(),
-            client: HttpClient::default(),
-        }
-    }
 }
 
 impl BrowserRuntime {
