@@ -1,1 +1,4 @@
 /target
+ai_browser.db
+*.db
+.DS_Store
